@@ -62,8 +62,10 @@ class Streamer:
                     rs = rs + bf.pop(self.recvnum).decode()
                     self.recvnum += 1
             break
-        self.buffer = bf
+            if rs == "":
+                continue
 
+        self.buffer = bf
         return rs.encode()
 
     def close(self) -> None:
