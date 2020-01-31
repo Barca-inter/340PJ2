@@ -27,16 +27,28 @@ class Streamer:
                 self.socket.sendto(data_bytes, (self.dst_ip, self.dst_port))
                 break
         # raw_data = data_bytes.decode()
-        #
+
         # while True:
         #     if len(raw_data) > 1472:
-        #         packet_data_bytes = raw_data[0:1472]  # !python note: range needs to cover the higher index
+        #         packet_data_bytes = raw_data[0:1472] # !python note: range needs to cover the higher index
         #         raw_data = raw_data[1472:]
         #         self.socket.sendto(packet_data_bytes.encode(), (self.dst_ip, self.dst_port))
         #     else:
         #         self.socket.sendto(raw_data.encode(), (self.dst_ip, self.dst_port))
         #         break
 
+        # if len(data_bytes) > 1472:
+        #     packet_num = int(math.ceil(len(data_bytes) / 1472))
+        #     for i in range(packet_num):
+        #         if i == packet_num:
+        #             self.socket.sendto(data_bytes[i * 1472: 1472 + (i - 1) * 1472 + len(data_bytes) % 1472],
+        #                                (self.dst_ip, self.dst_port))
+        #         else:
+        #             self.socket.sendto(data_bytes[i * 1472: 1472 + i * 1472], (self.dst_ip, self.dst_port))
+        #
+        # # for now I'm just sending the raw application-level data in one UDP payload
+        # else:
+        #     self.socket.sendto(data_bytes, (self.dst_ip, self.dst_port))
 
 
     def recv(self) -> bytes:
