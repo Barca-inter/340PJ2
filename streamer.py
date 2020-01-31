@@ -17,7 +17,6 @@ class Streamer:
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
-        packet_data_bytes = ''
         raw_data = data_bytes.decode()
 
         while True:
