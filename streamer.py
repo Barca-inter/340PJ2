@@ -22,6 +22,7 @@ class Streamer:
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
+
         header = self.seqnum
         raw_data = data_bytes
 
@@ -40,6 +41,7 @@ class Streamer:
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
                 break
         self.seqnum = header
+
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
