@@ -17,9 +17,18 @@ class Streamer:
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
+        packet_data_bytes = ''
+        raw_data = data_bytes.decode()
 
-        # for now I'm just sending the raw application-level data in one UDP payload
-        self.socket.sendto(data_bytes, (self.dst_ip, self.dst_port))
+        while True:
+            if len(raw_data) > 1472:
+                packet_data_bytes = raw_data[0:1472] # !python note: range needs to cover the higher index
+                raw_data = raw_data[1472:]
+                self.socket.sendto(packet_data_bytes.encode(), (self.dst_ip, self.dst_port))
+            else:
+                self.socket.sendto(raw_data.encode(), (self.dst_ip, self.dst_port))
+                break
+
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
