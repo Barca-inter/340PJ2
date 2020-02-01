@@ -6,6 +6,10 @@ from socket import INADDR_ANY
 import struct
 import time
 
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
+
 
 class Streamer:
     def __init__(self, dst_ip, dst_port,
@@ -16,9 +20,17 @@ class Streamer:
         self.socket.bind((src_ip, src_port))
         self.dst_ip = dst_ip
         self.dst_port = dst_port
-        self.seqnum = 0 #sending seq num
+
+        self.seqnum = 0  # sending seq num
         self.recvnum = 0
-        self.buffer = {} #receiving buffer
+        self.buffer = {}  # receiving buffer
+        self.pool = ThreadPoolExecutor(max_workers=2)
+        self.future = self.pool.submit(self.infinite_recv)
+
+    def infinite_recv(self):
+        while True:
+            print('1')
+            self.socket.recvfrom()
 
     def listener(self) -> None:
         while True:
@@ -35,9 +47,11 @@ class Streamer:
         while True:
 
             if len(raw_data) > 1470:
-                packet_data_bytes = raw_data[0:1470] # !python note: range needs to cover the higher index
+                packet_data_bytes = raw_data[0:1470]  # !python note: range needs to cover the higher index
                 raw_data = raw_data[1470:]
-                ss = struct.pack("!H1460s", header, packet_data_bytes)
+                ss = struct.pack("!H1470s", header, packet_data_bytes)
+
+
                 header += 1
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
             else:
@@ -48,7 +62,6 @@ class Streamer:
                 break
         self.seqnum = header
 
-
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
         # your code goes here!  The code below should be changed!
@@ -57,19 +70,17 @@ class Streamer:
 
         while True:
             ss, addr = self.socket.recvfrom()
-            cmd = "!H" + str(len(ss)-2) + "s"
-            #print("recv num:", self.recvnum)
+            cmd = "!H" + str(len(ss) - 2) + "s"
             header, data = struct.unpack(cmd, ss)
-            #print("header:::::::::::",header)
             bf.update({header: data})
             m = max(bf.keys())
-            for i in range(self.recvnum, m+1):
+            for i in range(self.recvnum, m + 1):
                 if self.recvnum in bf.keys():
                     rs = rs + bf.pop(self.recvnum).decode()
                     self.recvnum += 1
-            break
-            if rs == "":
+            if rs == '':
                 continue
+            break
 
         self.buffer = bf
         return rs.encode()
@@ -78,7 +89,10 @@ class Streamer:
         """Cleans up. It should block (wait) until the Streamer is done with all
            the necessary ACKs and retransmissions"""
         # your code goes here, especially after you add ACKs and retransmissions.
+
+        # self.pool.shutdown()
         pass
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        executor.submit(listener)
+    # with ThreadPoolExecutor() as pool:
+    #     future = pool.submit(infinite_recv)
+
