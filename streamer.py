@@ -4,6 +4,7 @@ from lossy_socket import LossyUDP
 from socket import INADDR_ANY
 # Construct the header to reorder sequence
 import struct
+
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
@@ -18,6 +19,7 @@ class Streamer:
         self.socket.bind((src_ip, src_port))
         self.dst_ip = dst_ip
         self.dst_port = dst_port
+
         self.seqnum = 0  # sending seq num
         self.recvnum = 0
         self.buffer = {}  # receiving buffer
@@ -32,14 +34,17 @@ class Streamer:
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
+
         header = self.seqnum
         raw_data = data_bytes
 
         while True:
+
             if len(raw_data) > 1470:
                 packet_data_bytes = raw_data[0:1470]  # !python note: range needs to cover the higher index
                 raw_data = raw_data[1470:]
                 ss = struct.pack("!H1470s", header, packet_data_bytes)
+
                 header += 1
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
             else:
@@ -55,6 +60,7 @@ class Streamer:
         # your code goes here!  The code below should be changed!
         bf = self.buffer
         rs = ''
+
         while True:
             ss, addr = self.socket.recvfrom()
             cmd = "!H" + str(len(ss) - 2) + "s"
@@ -68,6 +74,7 @@ class Streamer:
             if rs == '':
                 continue
             break
+
         self.buffer = bf
         return rs.encode()
 
@@ -75,6 +82,7 @@ class Streamer:
         """Cleans up. It should block (wait) until the Streamer is done with all
            the necessary ACKs and retransmissions"""
         # your code goes here, especially after you add ACKs and retransmissions.
+
         # self.pool.shutdown()
         pass
 
