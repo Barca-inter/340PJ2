@@ -4,6 +4,7 @@ from lossy_socket import LossyUDP
 from socket import INADDR_ANY
 # Construct the header to reorder sequence
 import struct
+import time
 
 
 class Streamer:
@@ -19,6 +20,11 @@ class Streamer:
         self.recvnum = 0
         self.buffer = {} #receiving buffer
 
+    def listener(self) -> None:
+        while True:
+            self.socket.recvfrom()
+
+
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
@@ -28,9 +34,9 @@ class Streamer:
 
         while True:
 
-            if len(raw_data) > 1460:
-                packet_data_bytes = raw_data[0:1460] # !python note: range needs to cover the higher index
-                raw_data = raw_data[1460:]
+            if len(raw_data) > 1470:
+                packet_data_bytes = raw_data[0:1470] # !python note: range needs to cover the higher index
+                raw_data = raw_data[1470:]
                 ss = struct.pack("!H1460s", header, packet_data_bytes)
                 header += 1
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
@@ -73,3 +79,6 @@ class Streamer:
            the necessary ACKs and retransmissions"""
         # your code goes here, especially after you add ACKs and retransmissions.
         pass
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(listener)
