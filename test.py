@@ -2,9 +2,14 @@ from streamer import Streamer
 import sys
 import lossy_socket
 
-NUMS=1000
+NUMS = 20
 
 
+# '1 2 3 4 5 6 7 8 9 10 '
+# ['1 ', '2 ',...,'10 ']
+# expect += 10
+
+# ''
 def receive(s):
     expected = 0
     str_buf = ""
@@ -21,7 +26,7 @@ def receive(s):
                 expected += 1
                 str_buf = ''
             elif int(t) > expected:
-                print("ERROR: got %s but was expecting %d" %(t, expected))
+                print("ERROR: got %s but was expecting %d" % (t, expected))
                 sys.exit(-1)
             else:
                 # we only received the first part of the number at the end
@@ -29,7 +34,7 @@ def receive(s):
                 str_buf = t
                 break
 
-    
+
 def host1(listen_port, remote_port):
     s = Streamer(dst_ip="localhost", dst_port=remote_port,
                  src_ip="localhost", src_port=listen_port)
@@ -40,7 +45,7 @@ def host1(listen_port, remote_port):
     buf = ""
     while i < NUMS:
         buf += ("%d " % i)
-        if len(buf) > 12345 or i == NUMS-1:
+        if len(buf) > 12345 or i == NUMS - 1:
             print("sending {%s}" % buf)
             s.send(buf.encode('utf-8'))
             buf = ""
@@ -48,7 +53,7 @@ def host1(listen_port, remote_port):
     s.close()
     print("CHECK THE OTHER SCRIPT FOR STAGE 2 RESULTS.")
 
-        
+
 def host2(listen_port, remote_port):
     s = Streamer(dst_ip="localhost", dst_port=remote_port,
                  src_ip="localhost", src_port=listen_port)

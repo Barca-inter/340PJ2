@@ -2,7 +2,11 @@
 from lossy_socket import LossyUDP
 # do not import anything else from socket except INADDR_ANY
 from socket import INADDR_ANY
-import math
+# Construct the header to reorder sequence
+import struct
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 
 
 class Streamer:
@@ -14,54 +18,65 @@ class Streamer:
         self.socket.bind((src_ip, src_port))
         self.dst_ip = dst_ip
         self.dst_port = dst_port
+        self.seqnum = 0  # sending seq num
+        self.recvnum = 0
+        self.buffer = {}  # receiving buffer
+        self.pool = ThreadPoolExecutor(max_workers=2)
+        self.future = self.pool.submit(self.infinite_recv)
+
+    def infinite_recv(self):
+        while True:
+            print('1')
+            self.socket.recvfrom()
 
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
+        header = self.seqnum
+        raw_data = data_bytes
+
         while True:
-            if len(data_bytes) > 1472:
-                packet_data_bytes = data_bytes[0:1472]  # !python note: range needs to cover the higher index
-                data_bytes = data_bytes[1472:]
-                self.socket.sendto(packet_data_bytes, (self.dst_ip, self.dst_port))
+            if len(raw_data) > 1470:
+                packet_data_bytes = raw_data[0:1470]  # !python note: range needs to cover the higher index
+                raw_data = raw_data[1470:]
+                ss = struct.pack("!H1470s", header, packet_data_bytes)
+                header += 1
+                self.socket.sendto(ss, (self.dst_ip, self.dst_port))
             else:
-                self.socket.sendto(data_bytes, (self.dst_ip, self.dst_port))
+                cmd = "!H" + str(len(raw_data)) + "s"
+                ss = struct.pack(cmd, header, raw_data)
+                header += 1
+                self.socket.sendto(ss, (self.dst_ip, self.dst_port))
                 break
-        # raw_data = data_bytes.decode()
-
-        # while True:
-        #     if len(raw_data) > 1472:
-        #         packet_data_bytes = raw_data[0:1472] # !python note: range needs to cover the higher index
-        #         raw_data = raw_data[1472:]
-        #         self.socket.sendto(packet_data_bytes.encode(), (self.dst_ip, self.dst_port))
-        #     else:
-        #         self.socket.sendto(raw_data.encode(), (self.dst_ip, self.dst_port))
-        #         break
-
-        # if len(data_bytes) > 1472:
-        #     packet_num = int(math.ceil(len(data_bytes) / 1472))
-        #     for i in range(packet_num):
-        #         if i == packet_num:
-        #             self.socket.sendto(data_bytes[i * 1472: 1472 + (i - 1) * 1472 + len(data_bytes) % 1472],
-        #                                (self.dst_ip, self.dst_port))
-        #         else:
-        #             self.socket.sendto(data_bytes[i * 1472: 1472 + i * 1472], (self.dst_ip, self.dst_port))
-        #
-        # # for now I'm just sending the raw application-level data in one UDP payload
-        # else:
-        #     self.socket.sendto(data_bytes, (self.dst_ip, self.dst_port))
-
+        self.seqnum = header
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
         # your code goes here!  The code below should be changed!
-
-        # this sample code just calls the recvfrom method on the LossySocket
-        data, addr = self.socket.recvfrom()
-        # For now, I'll just pass the full UDP payload to the app
-        return data
+        bf = self.buffer
+        rs = ''
+        while True:
+            ss, addr = self.socket.recvfrom()
+            cmd = "!H" + str(len(ss) - 2) + "s"
+            header, data = struct.unpack(cmd, ss)
+            bf.update({header: data})
+            m = max(bf.keys())
+            for i in range(self.recvnum, m + 1):
+                if self.recvnum in bf.keys():
+                    rs = rs + bf.pop(self.recvnum).decode()
+                    self.recvnum += 1
+            if rs == '':
+                continue
+            break
+        self.buffer = bf
+        return rs.encode()
 
     def close(self) -> None:
         """Cleans up. It should block (wait) until the Streamer is done with all
            the necessary ACKs and retransmissions"""
         # your code goes here, especially after you add ACKs and retransmissions.
+        # self.pool.shutdown()
         pass
+
+    # with ThreadPoolExecutor() as pool:
+    #     future = pool.submit(infinite_recv)
