@@ -2,7 +2,7 @@ from streamer import Streamer
 import sys
 import lossy_socket
 
-NUMS=1000
+NUMS=100
 
 
 def receive(s):
@@ -29,7 +29,7 @@ def receive(s):
                 str_buf = t
                 break
 
-    
+
 def host1(listen_port, remote_port):
     s = Streamer(dst_ip="localhost", dst_port=remote_port,
                  src_ip="localhost", src_port=listen_port)
@@ -48,7 +48,7 @@ def host1(listen_port, remote_port):
     s.close()
     print("CHECK THE OTHER SCRIPT FOR STAGE 2 RESULTS.")
 
-        
+
 def host2(listen_port, remote_port):
     s = Streamer(dst_ip="localhost", dst_port=remote_port,
                  src_ip="localhost", src_port=listen_port)
@@ -63,7 +63,7 @@ def host2(listen_port, remote_port):
 
 
 def main():
-    lossy_socket.sim = lossy_socket.SimulationParams(loss_rate=0.0, corruption_rate=0.0, max_delivery_delay=0.1)
+    lossy_socket.sim = lossy_socket.SimulationParams(loss_rate=0.1, corruption_rate=0.0, max_delivery_delay=0.1)
 
     if len(sys.argv) < 4:
         print("usage is: python3 test.py [port1] [port2] [1|2]")
