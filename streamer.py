@@ -4,10 +4,6 @@ from lossy_socket import LossyUDP
 from socket import INADDR_ANY
 # Construct the header to reorder sequence
 import struct
-
-
-
-from concurrent.futures import ThreadPoolExecutor
 import threading
 
 import time
@@ -38,7 +34,10 @@ class Streamer:
             ss, addr = self.socket.recvfrom()
             if len(ss) <= 2:
                 cmd = "!H"
-                self.ack, = struct.unpack(cmd, ss)
+                this_ack, = struct.unpack(cmd, ss)
+                if this_ack >= self.ack:
+                    self.ack = this_ack
+                print("ack = %d" % self.ack)
             else:
                 cmd = "!H" + str(len(ss) - 2) + "s"
                 header, data = struct.unpack(cmd, ss)
@@ -47,39 +46,42 @@ class Streamer:
                 self.buffer.update({header: data})
             # print(ss)
 
-    def retr(self,hd,data):
-        if hd >= self.ack:
-            print("retransmit {%s}" % data.decode())
+    def retransmission(self, ss):
+        if self.seqnum < self.ack:
+            print("retransmit {%s}" % ss.decode())
+            self.socket.sendto(ss, (self.dst_ip, self.dst_port))
 
 
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
 
-        header = self.seqnum
+        # header = self.seqnum
         raw_data = data_bytes
-
 
         while True:
 
             if len(raw_data) > 1470:
                 packet_data_bytes = raw_data[0:1470]  # !python note: range needs to cover the higher index
                 raw_data = raw_data[1470:]
-                ss = struct.pack("!H1470s", header, packet_data_bytes)
+                self.seqnum += 1
+                ss = struct.pack("!H1470s", self.seqnum, packet_data_bytes)
 
-                header += 1
+                # header += 1
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                threading.Timer(0.25, self.retr, header,raw_data)
+                threading.Timer(0.25, self.retransmission, ss)
             else:
 
                 if len(raw_data) != 0:
                     cmd = "!H" + str(len(raw_data)) + "s"
-                    ss = struct.pack(cmd, header, raw_data)
-                    header += 1
-                    self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+                    self.seqnum += 1
+                    ss = struct.pack(cmd, self.seqnum, raw_data)
+                    # header += 1
 
+                    self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+                    threading.Timer(0.25, self.retransmission, ss)
                 break
-        self.seqnum = header
+        # self.seqnum = header
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
@@ -94,6 +96,15 @@ class Streamer:
             for i in range(self.recvnum, m + 1):
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
+
+
+                    # give feedback ACK to sender
+                    ack = struct.pack("!H", self.recvnum)
+                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+
+                    # continue to next expected number
+
+
                     self.recvnum += 1
 
             if rs == '':
@@ -110,4 +121,3 @@ class Streamer:
 
         # self.pool.shutdown()
         pass
-
