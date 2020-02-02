@@ -3,7 +3,7 @@ import sys
 import lossy_socket
 
 
-NUMS=100
+NUMS=10
 
 
 # '1 2 3 4 5 6 7 8 9 10 '
