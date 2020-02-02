@@ -91,16 +91,19 @@ class Streamer:
         while True:
             if not self.buffer.keys():
                 continue
+
             m = max(self.buffer.keys())
             for i in range(self.recvnum, m + 1):
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
+
 
                     # give feedback ACK to sender
                     ack = struct.pack("!H", self.recvnum)
                     self.socket.sendto(ack, (self.dst_ip, self.dst_port))
 
                     # continue to next expected number
+
 
                     self.recvnum += 1
 
