@@ -84,26 +84,16 @@ class Streamer:
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
         # your code goes here!  The code below should be changed!
-
-
         rs = ''
 
         while True:
             if not self.buffer.keys():
                 continue
 
-
             m = max(self.buffer.keys())
             for i in range(self.recvnum, m + 1):
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
-
-                    # give feedback ACK to sender
-                    ack = struct.pack("!H", self.recvnum)
-                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
-
-                    # continue to next expected number
-
                     self.recvnum += 1
 
             if rs == '':
