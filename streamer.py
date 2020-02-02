@@ -5,6 +5,7 @@ from socket import INADDR_ANY
 # Construct the header to reorder sequence
 import struct
 
+
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
@@ -23,13 +24,29 @@ class Streamer:
         self.seqnum = 0  # sending seq num
         self.recvnum = 0
         self.buffer = {}  # receiving buffer
-        self.pool = ThreadPoolExecutor(max_workers=2)
-        self.future = self.pool.submit(self.infinite_recv)
+        self.ack = 0
+        self.executor = ThreadPoolExecutor(max_workers=1)
+        self.executor.submit(self.listener)
+        print("Start bg recv..")
 
-    def infinite_recv(self):
+    def listener(self) -> None:
         while True:
-            print('1')
-            self.socket.recvfrom()
+            # print('1 listener')
+            ss, addr = self.socket.recvfrom()
+            if len(ss) <= 2:
+                cmd = "!H"
+                self.ack, = struct.unpack(cmd, ss)
+            else:
+                cmd = "!H" + str(len(ss) - 2) + "s"
+                header, data = struct.unpack(cmd, ss)
+                if header < self.recvnum:
+                    continue
+                self.buffer.update({header: data})
+            # print(ss)
+
+    def retr(self,hd,data):
+        if hd >= self.ack:
+            print("retransmit {%s}" % data.decode())
 
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
@@ -47,35 +64,43 @@ class Streamer:
 
                 header += 1
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+                threading.Timer(0.25, self.retr, header,raw_data)
             else:
                 cmd = "!H" + str(len(raw_data)) + "s"
                 ss = struct.pack(cmd, header, raw_data)
                 header += 1
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+                threading.Timer(0.25,self.retr,header,raw_data)
                 break
         self.seqnum = header
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
         # your code goes here!  The code below should be changed!
-        bf = self.buffer
+
+
+
         rs = ''
 
         while True:
-            ss, addr = self.socket.recvfrom()
-            cmd = "!H" + str(len(ss) - 2) + "s"
-            header, data = struct.unpack(cmd, ss)
-            bf.update({header: data})
-            m = max(bf.keys())
+
+            # ss, addr = self.socket.recvfrom()
+            # print("2 recv")
+            # cmd = "!H" + str(len(ss) - 2) + "s"
+            # header, data = struct.unpack(cmd, ss)
+            # self.buffer.update({header: data})
+            if self.buffer == {}:
+                continue
+            m = max(self.buffer.keys())
             for i in range(self.recvnum, m + 1):
-                if self.recvnum in bf.keys():
-                    rs = rs + bf.pop(self.recvnum).decode()
+                if self.recvnum in self.buffer.keys():
+                    rs = rs + self.buffer.pop(self.recvnum).decode()
                     self.recvnum += 1
             if rs == '':
                 continue
             break
 
-        self.buffer = bf
+
         return rs.encode()
 
     def close(self) -> None:
@@ -88,3 +113,5 @@ class Streamer:
 
     # with ThreadPoolExecutor() as pool:
     #     future = pool.submit(infinite_recv)
+
+
