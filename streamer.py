@@ -24,7 +24,7 @@ class Streamer:
         self.recvnum = 0  # receiver's current receiving number
         self.buffer = {}  # receiving buffer
         self.ack = 0
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        self.executor = ThreadPoolExecutor(max_workers=2)
         self.executor.submit(self.listener)
         print("Start bg recv..")
 
@@ -41,12 +41,17 @@ class Streamer:
             else:
                 cmd = "!H" + str(len(ss) - 2) + "s"
                 header, data = struct.unpack(cmd, ss)
+                print("header is %d" % header)
                 if header < self.recvnum:
                     continue
                 self.buffer.update({header: data})
+                print(self.buffer)
+                ack = struct.pack("!H", header)
+                self.socket.sendto(ack, (self.dst_ip, self.dst_port))
             # print(ss)
 
     def retransmission(self, ss):
+        print("retransmit")
         if self.seqnum < self.ack:
             print("retransmit {%s}" % ss.decode())
             self.socket.sendto(ss, (self.dst_ip, self.dst_port))
@@ -69,7 +74,8 @@ class Streamer:
 
                 # header += 1
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                threading.Timer(0.25, self.retransmission, ss)
+                t = threading.Timer(0.25, self.retransmission, ss)
+                t.start()
             else:
 
                 if len(raw_data) != 0:
@@ -79,7 +85,8 @@ class Streamer:
                     # header += 1
 
                     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                    threading.Timer(0.25, self.retransmission, ss)
+                    t = threading.Timer(0.25, self.retransmission, ss)
+                    t.start()
                 break
         # self.seqnum = header
 
@@ -89,7 +96,7 @@ class Streamer:
         rs = ''
 
         while True:
-            if not self.buffer.keys():
+            if self.buffer == {}:
                 continue
 
             m = max(self.buffer.keys())
@@ -99,8 +106,8 @@ class Streamer:
 
 
                     # give feedback ACK to sender
-                    ack = struct.pack("!H", self.recvnum)
-                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                    # ack = struct.pack("!H", self.recvnum)
+                    # self.socket.sendto(ack, (self.dst_ip, self.dst_port))
 
                     # continue to next expected number
 
