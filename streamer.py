@@ -101,8 +101,6 @@ class Streamer:
 
             break
 
-
-
         return rs.encode()
 
     def close(self) -> None:
