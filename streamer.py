@@ -26,7 +26,7 @@ class Streamer:
         self.ack = 0
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.executor.submit(self.listener)
-        print("Start bg recv..")
+        print("Initial finished.")
 
     def listener(self) -> None:
         while True:
