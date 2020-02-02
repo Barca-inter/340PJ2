@@ -2,7 +2,8 @@ from streamer import Streamer
 import sys
 import lossy_socket
 
-NUMS = 20
+
+NUMS=100
 
 
 # '1 2 3 4 5 6 7 8 9 10 '
@@ -68,7 +69,7 @@ def host2(listen_port, remote_port):
 
 
 def main():
-    lossy_socket.sim = lossy_socket.SimulationParams(loss_rate=0.0, corruption_rate=0.0, max_delivery_delay=0.1)
+    lossy_socket.sim = lossy_socket.SimulationParams(loss_rate=0.1, corruption_rate=0.0, max_delivery_delay=0.1)
 
     if len(sys.argv) < 4:
         print("usage is: python3 test.py [port1] [port2] [1|2]")

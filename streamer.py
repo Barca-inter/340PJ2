@@ -6,9 +6,12 @@ from socket import INADDR_ANY
 import struct
 
 
+
 from concurrent.futures import ThreadPoolExecutor
 import threading
+
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 
 class Streamer:
@@ -22,7 +25,7 @@ class Streamer:
         self.dst_port = dst_port
 
         self.seqnum = 0  # sending seq num
-        self.recvnum = 0
+        self.recvnum = 0  # receiver's current receiving number
         self.buffer = {}  # receiving buffer
         self.ack = 0
         self.executor = ThreadPoolExecutor(max_workers=1)
@@ -48,12 +51,14 @@ class Streamer:
         if hd >= self.ack:
             print("retransmit {%s}" % data.decode())
 
+
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
 
         header = self.seqnum
         raw_data = data_bytes
+
 
         while True:
 
@@ -66,11 +71,13 @@ class Streamer:
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
                 threading.Timer(0.25, self.retr, header,raw_data)
             else:
-                cmd = "!H" + str(len(raw_data)) + "s"
-                ss = struct.pack(cmd, header, raw_data)
-                header += 1
-                self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                threading.Timer(0.25,self.retr,header,raw_data)
+
+                if len(raw_data) != 0:
+                    cmd = "!H" + str(len(raw_data)) + "s"
+                    ss = struct.pack(cmd, header, raw_data)
+                    header += 1
+                    self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+
                 break
         self.seqnum = header
 
@@ -79,26 +86,30 @@ class Streamer:
         # your code goes here!  The code below should be changed!
 
 
-
         rs = ''
 
         while True:
-
-            # ss, addr = self.socket.recvfrom()
-            # print("2 recv")
-            # cmd = "!H" + str(len(ss) - 2) + "s"
-            # header, data = struct.unpack(cmd, ss)
-            # self.buffer.update({header: data})
-            if self.buffer == {}:
+            if not self.buffer.keys():
                 continue
+
+
             m = max(self.buffer.keys())
             for i in range(self.recvnum, m + 1):
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
+
+                    # give feedback ACK to sender
+                    self.socket.sendto(self.recvnum, (self.dst_ip, self.dst_port))
+
+                    # continue to next expected number
+
                     self.recvnum += 1
+
             if rs == '':
                 continue
+
             break
+
 
 
         return rs.encode()
@@ -110,8 +121,4 @@ class Streamer:
 
         # self.pool.shutdown()
         pass
-
-    # with ThreadPoolExecutor() as pool:
-    #     future = pool.submit(infinite_recv)
-
 
