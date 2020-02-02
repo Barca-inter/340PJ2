@@ -19,7 +19,7 @@ class Streamer:
         self.socket.bind((src_ip, src_port))
         self.dst_ip = dst_ip
         self.dst_port = dst_port
-
+        self.data = b''
         self.seqnum = 0  # sending seq num
         self.recvnum = 0  # receiver's current receiving number
         self.buffer = {}  # receiving buffer
@@ -50,10 +50,12 @@ class Streamer:
                 self.socket.sendto(ack, (self.dst_ip, self.dst_port))
             # print(ss)
 
-    def retransmission(self, ss):
+    def retransmission(self,header):
         print("retransmit")
-        if self.seqnum < self.ack:
-            print("retransmit {%s}" % ss.decode())
+        if header < self.ack:
+            # print("retransmit {%s}" % ss.decode())
+            cmd = "!H" + str(len(self.data)) + "s"
+            ss = struct.pack(cmd, header, self.data)
             self.socket.sendto(ss, (self.dst_ip, self.dst_port))
 
 
@@ -61,18 +63,19 @@ class Streamer:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
 
-        # header = self.seqnum
+        header = self.seqnum
         raw_data = data_bytes
-
+        self.data = raw_data
         while True:
 
             if len(raw_data) > 1470:
                 packet_data_bytes = raw_data[0:1470]  # !python note: range needs to cover the higher index
                 raw_data = raw_data[1470:]
-                self.seqnum += 1
+                # self.seqnum += 1
+                header += 1
                 ss = struct.pack("!H1470s", self.seqnum, packet_data_bytes)
 
-                # header += 1
+
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
                 t = threading.Timer(0.25, self.retransmission, ss)
                 t.start()
@@ -80,15 +83,15 @@ class Streamer:
 
                 if len(raw_data) != 0:
                     cmd = "!H" + str(len(raw_data)) + "s"
-                    self.seqnum += 1
+                    header += 1
                     ss = struct.pack(cmd, self.seqnum, raw_data)
-                    # header += 1
 
+                    # self.seqnum += 1
                     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                    t = threading.Timer(0.25, self.retransmission, ss)
+                    t = threading.Timer(0.25, self.retransmission,(header,))
                     t.start()
                 break
-        # self.seqnum = header
+        self.seqnum = header
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
