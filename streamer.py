@@ -99,7 +99,8 @@ class Streamer:
                     rs = rs + self.buffer.pop(self.recvnum).decode()
 
                     # give feedback ACK to sender
-                    self.socket.sendto(self.recvnum, (self.dst_ip, self.dst_port))
+                    ack = struct.pack("!H", self.recvnum)
+                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
 
                     # continue to next expected number
 
