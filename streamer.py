@@ -37,11 +37,9 @@ class Streamer:
 
                 cmd = "!H"
                 this_ack, = struct.unpack(cmd, ss)
-                # t = self.TIMER_THREAD.get(this_ack)
-                # t.cancel()  # STOP the timer, and REMOVE it from dict
-                # self.TIMER_THREAD.pop(this_ack)
                 self.ack.append(this_ack)
                 print("==I got ACK: ==", this_ack)
+
 
 
             else:           # if receive DATA, put into buffer
@@ -81,14 +79,6 @@ class Streamer:
             t2.start()
         else:
             self.TIMER_THREAD.pop(header)
-
-
-        # if ss < self.ack:
-        #     cmd = "!H" + str(len(self.data)) + "s"
-        #     ss = struct.pack(cmd, ss, self.data)
-        #     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-        #     print("retransmit {%s}" % ss.decode())
-
 
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
