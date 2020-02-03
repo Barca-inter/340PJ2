@@ -41,7 +41,7 @@ class Streamer:
                 t.cancel()  # STOP the timer, and REMOVE it from dict
                 self.TIMER_THREAD.pop(this_ack)
                 self.ack.append(this_ack)
-                #print("==I got ACK: ==", this_ack)
+                print("==I got ACK: ==", this_ack)
 
 
             else:           # if receive DATA, put into buffer
@@ -50,7 +50,8 @@ class Streamer:
                 #print("Got header is %d" % header)
 
                 if header < self.recvnum:
-                    continue
+                    ack = struct.pack("!H", header)
+                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
                 else:
                     self.buffer.update({header: data})
 
@@ -61,15 +62,15 @@ class Streamer:
 
     def retransmission(self,ss):
 
-        # resend ss after exceeding time
-        self.socket.sendto(ss, (self.dst_ip, self.dst_port))
         # deparse the ss to get the header
         cmd = "!H" + str(len(ss)-2) + "s"
         header, dt = struct.unpack(cmd, ss)
-
+        print("ack[]: ", self.ack)
         if header not in self.ack:
+            # resend ss after exceeding time
+            self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+
             t1 = self.TIMER_THREAD.get(header)
-            #print("T1: ", t1)
             t1.cancel()
             self.TIMER_THREAD.pop(header)
             print("!!Resend!!:", header,"; ",dt)
