@@ -37,12 +37,8 @@ class Streamer:
 
                 cmd = "!H"
                 this_ack, = struct.unpack(cmd, ss)
-                t = self.TIMER_THREAD.get(this_ack)
-                t.cancel()  # STOP the timer, and REMOVE it from dict
-                self.TIMER_THREAD.pop(this_ack)
                 self.ack.append(this_ack)
                 print("==I got ACK: ==", this_ack)
-
 
             else:           # if receive DATA, put into buffer
                 cmd = "!H" + str(len(ss) - 2) + "s"
@@ -61,18 +57,15 @@ class Streamer:
 
 
     def retransmission(self,ss):
-
+        # resend ss after exceeding time
+        # self.socket.sendto(ss, (self.dst_ip, self.dst_port))
         # deparse the ss to get the header
         cmd = "!H" + str(len(ss)-2) + "s"
         header, dt = struct.unpack(cmd, ss)
-        print("ack[]: ", self.ack)
+        print(header,self.ack)
         if header not in self.ack:
-            # resend ss after exceeding time
             self.socket.sendto(ss, (self.dst_ip, self.dst_port))
 
-            t1 = self.TIMER_THREAD.get(header)
-            t1.cancel()
-            self.TIMER_THREAD.pop(header)
             print("!!Resend!!:", header,"; ",dt)
             # recreate a Timer for this send
             t2 = Timer(0.25, self.retransmission, (ss,))  # self.seqnum,
@@ -80,14 +73,6 @@ class Streamer:
             t2.start()
         else:
             self.TIMER_THREAD.pop(header)
-
-
-        # if ss < self.ack:
-        #     cmd = "!H" + str(len(self.data)) + "s"
-        #     ss = struct.pack(cmd, ss, self.data)
-        #     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-        #     print("retransmit {%s}" % ss.decode())
-
 
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
@@ -105,7 +90,7 @@ class Streamer:
                 ss = struct.pack("!H1470s", self.seqnum, packet_data_bytes)
 
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                t = Timer(0.25, self.retransmission, (ss,))
+                t = Timer(0.5, self.retransmission, (ss,))
                 self.TIMER_THREAD.update({self.seqnum: t})
                 t.start()
 
@@ -118,7 +103,7 @@ class Streamer:
                     ss = struct.pack(cmd, self.seqnum, raw_data) #???? seqnum
 
                     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                    t = Timer(0.25, self.retransmission, (ss,)) #self.seqnum,
+                    t = Timer(0.5, self.retransmission, (ss,)) #self.seqnum,
                     self.TIMER_THREAD.update({self.seqnum: t})
                     t.start()
 
