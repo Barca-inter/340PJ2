@@ -22,10 +22,11 @@ class Streamer:
         self.seqnum = 0  # sending seq num
         self.recvnum = 1  # receiver's current receiving number in order
         self.buffer = {}  # receiving buffer
-        self.ack = 0    # the maximum ack we've received
+        self.ack = []    # all the ACKs we've received
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.executor.submit(self.listener)
         self.TIMER_THREAD = {}
+
         print("Initial finished.")
 
     def listener(self) -> None:
@@ -36,50 +37,50 @@ class Streamer:
 
                 cmd = "!H"
                 this_ack, = struct.unpack(cmd, ss)
-                # if this_ack >= self.ack:
-                #     # leave the maximum ack as self.ack
-                #     self.ack = this_ack
-                # print("ack = %d" % self.ack)
-                # stop the timer of this_ack we just get
-                t = self.TIMER_THREAD.get(this_ack)
-                t.cancel()  # STOP the timer, and REMOVE it from dict
-                self.TIMER_THREAD.pop(this_ack)
-
+                # t = self.TIMER_THREAD.get(this_ack)
+                # t.cancel()  # STOP the timer, and REMOVE it from dict
+                # self.TIMER_THREAD.pop(this_ack)
+                self.ack.append(this_ack)
                 print("==I got ACK: ==", this_ack)
 
 
             else:           # if receive DATA, put into buffer
                 cmd = "!H" + str(len(ss) - 2) + "s"
                 header, data = struct.unpack(cmd, ss)
-                print("Got header is %d" % header)
+                #print("Got header is %d" % header)
 
                 if header < self.recvnum:
-                    continue
+                    ack = struct.pack("!H", header)
+                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
                 else:
                     self.buffer.update({header: data})
 
                     ack = struct.pack("!H", header)
                     self.socket.sendto(ack, (self.dst_ip, self.dst_port))
-                    print("--Sent ACK:", header)
+                    #print("--Sent ACK:", header)
 
 
     def retransmission(self,ss):
 
-
         # resend ss after exceeding time
-        self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+        # self.socket.sendto(ss, (self.dst_ip, self.dst_port))
         # deparse the ss to get the header
         cmd = "!H" + str(len(ss)-2) + "s"
-        header, _ = struct.unpack(cmd, ss)
-
-        print("!!Resend!!:", header)
-
-        # recreate a Timer for this send
-        t = Timer(0.25, self.retransmission, (ss,))  # self.seqnum,
-        self.TIMER_THREAD.update({header: t})
-        t.start()
-
-
+        header, dt = struct.unpack(cmd, ss)
+        print(header,self.ack)
+        if header not in self.ack:
+            self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+            # t1 = self.TIMER_THREAD.get(header)
+            # #print("T1: ", t1)
+            # t1.cancel()
+            # self.TIMER_THREAD.pop(header)
+            print("!!Resend!!:", header,"; ",dt)
+            # recreate a Timer for this send
+            t2 = Timer(0.25, self.retransmission, (ss,))  # self.seqnum,
+            self.TIMER_THREAD.update({header: t2})
+            t2.start()
+        else:
+            self.TIMER_THREAD.pop(header)
 
 
         # if ss < self.ack:
@@ -105,7 +106,7 @@ class Streamer:
                 ss = struct.pack("!H1470s", self.seqnum, packet_data_bytes)
 
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                t = Timer(0.25, self.retransmission, (ss,))
+                t = Timer(0.5, self.retransmission, (ss,))
                 self.TIMER_THREAD.update({self.seqnum: t})
                 t.start()
 
@@ -118,7 +119,7 @@ class Streamer:
                     ss = struct.pack(cmd, self.seqnum, raw_data) #???? seqnum
 
                     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                    t = Timer(0.25, self.retransmission, (ss,)) #self.seqnum,
+                    t = Timer(0.5, self.retransmission, (ss,)) #self.seqnum,
                     self.TIMER_THREAD.update({self.seqnum: t})
                     t.start()
 
@@ -139,7 +140,7 @@ class Streamer:
                 #print("recv()",self.recvnum,", ",self.buffer.keys())
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
-                    print("Rs+=pop: ", rs, " recv#: ", self.recvnum)
+                    #print("Rs+=pop: ", rs, " recv#: ", self.recvnum)
                     self.recvnum += 1
 
             if rs == '':
