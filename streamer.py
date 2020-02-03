@@ -4,10 +4,9 @@ from lossy_socket import LossyUDP
 from socket import INADDR_ANY
 # Construct the header to reorder sequence
 import struct
-import threading
-
-import time
+from threading import Timer
 from concurrent.futures import ThreadPoolExecutor
+
 
 
 class Streamer:
@@ -21,49 +20,79 @@ class Streamer:
         self.dst_port = dst_port
         self.data = b''
         self.seqnum = 0  # sending seq num
-        self.recvnum = 0  # receiver's current receiving number
+        self.recvnum = 1  # receiver's current receiving number in order
         self.buffer = {}  # receiving buffer
-        self.ack = 0
+        self.ack = 0    # the maximum ack we've received
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.executor.submit(self.listener)
+        self.TIMER_THREAD = {}
         print("Initial finished.")
 
     def listener(self) -> None:
         while True:
-            # print('1 listener')
+
             ss, addr = self.socket.recvfrom()
-            if len(ss) <= 2:
+            if len(ss) <= 2:# if receive ACK, STOP corresponding TIMER
+
                 cmd = "!H"
                 this_ack, = struct.unpack(cmd, ss)
-                if this_ack >= self.ack:
-                    self.ack = this_ack
-                print("ack = %d" % self.ack)
-            else:
+                # if this_ack >= self.ack:
+                #     # leave the maximum ack as self.ack
+                #     self.ack = this_ack
+                # print("ack = %d" % self.ack)
+                # stop the timer of this_ack we just get
+                t = self.TIMER_THREAD.get(this_ack)
+                t.cancel()  # STOP the timer, and REMOVE it from dict
+                self.TIMER_THREAD.pop(this_ack)
+
+                print("==I got ACK: ==", this_ack)
+
+
+            else:           # if receive DATA, put into buffer
                 cmd = "!H" + str(len(ss) - 2) + "s"
                 header, data = struct.unpack(cmd, ss)
-                print("header is %d" % header)
+                print("Got header is %d" % header)
+
                 if header < self.recvnum:
                     continue
-                self.buffer.update({header: data})
-                print(self.buffer)
-                ack = struct.pack("!H", header)
-                self.socket.sendto(ack, (self.dst_ip, self.dst_port))
-            # print(ss)
+                else:
+                    self.buffer.update({header: data})
 
-    def retransmission(self,header):
-        print("retransmit")
-        if header < self.ack:
-            # print("retransmit {%s}" % ss.decode())
-            cmd = "!H" + str(len(self.data)) + "s"
-            ss = struct.pack(cmd, header, self.data)
-            self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+                    ack = struct.pack("!H", header)
+                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                    print("--Sent ACK:", header)
+
+
+    def retransmission(self,ss):
+
+
+        # resend ss after exceeding time
+        self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+        # deparse the ss to get the header
+        cmd = "!H" + str(len(ss)-2) + "s"
+        header, _ = struct.unpack(cmd, ss)
+
+        print("!!Resend!!:", header)
+
+        # recreate a Timer for this send
+        t = Timer(0.25, self.retransmission, (ss,))  # self.seqnum,
+        self.TIMER_THREAD.update({header: t})
+        t.start()
+
+
+
+
+        # if ss < self.ack:
+        #     cmd = "!H" + str(len(self.data)) + "s"
+        #     ss = struct.pack(cmd, ss, self.data)
+        #     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
+        #     print("retransmit {%s}" % ss.decode())
 
 
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
         # Your code goes here!  The code below should be changed!
 
-        header = self.seqnum
         raw_data = data_bytes
         self.data = raw_data
         while True:
@@ -71,27 +100,30 @@ class Streamer:
             if len(raw_data) > 1470:
                 packet_data_bytes = raw_data[0:1470]  # !python note: range needs to cover the higher index
                 raw_data = raw_data[1470:]
-                # self.seqnum += 1
-                header += 1
+                self.seqnum += 1
+
                 ss = struct.pack("!H1470s", self.seqnum, packet_data_bytes)
 
-
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                t = threading.Timer(0.25, self.retransmission, ss)
+                t = Timer(0.25, self.retransmission, (ss,))
+                self.TIMER_THREAD.update({self.seqnum: t})
                 t.start()
+
             else:
 
                 if len(raw_data) != 0:
-                    cmd = "!H" + str(len(raw_data)) + "s"
-                    header += 1
-                    ss = struct.pack(cmd, self.seqnum, raw_data)
+                    self.seqnum += 1
 
-                    # self.seqnum += 1
+                    cmd = "!H" + str(len(raw_data)) + "s"
+                    ss = struct.pack(cmd, self.seqnum, raw_data) #???? seqnum
+
                     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                    t = threading.Timer(0.25, self.retransmission,(header,))
+                    t = Timer(0.25, self.retransmission, (ss,)) #self.seqnum,
+                    self.TIMER_THREAD.update({self.seqnum: t})
                     t.start()
+
                 break
-        self.seqnum = header
+
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
@@ -104,17 +136,10 @@ class Streamer:
 
             m = max(self.buffer.keys())
             for i in range(self.recvnum, m + 1):
+                #print("recv()",self.recvnum,", ",self.buffer.keys())
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
-
-
-                    # give feedback ACK to sender
-                    # ack = struct.pack("!H", self.recvnum)
-                    # self.socket.sendto(ack, (self.dst_ip, self.dst_port))
-
-                    # continue to next expected number
-
-
+                    print("Rs+=pop: ", rs, " recv#: ", self.recvnum)
                     self.recvnum += 1
 
             if rs == '':
