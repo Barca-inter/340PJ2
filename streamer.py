@@ -6,7 +6,7 @@ from socket import INADDR_ANY
 import struct
 from threading import Timer
 from concurrent.futures import ThreadPoolExecutor
-
+import hashlib
 
 
 class Streamer:
@@ -26,6 +26,7 @@ class Streamer:
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.executor.submit(self.listener)
         self.TIMER_THREAD = {}
+        self.MD5 = {}
 
         print("Initial finished.")
 
@@ -38,45 +39,51 @@ class Streamer:
                 cmd = "!H"
                 this_ack, = struct.unpack(cmd, ss)
                 self.ack.append(this_ack)
-                print("==I got ACK: ==", this_ack)
 
+                #print("==I got ACK: ==", this_ack)
 
-
-            else:           # if receive DATA, put into buffer
-                cmd = "!H" + str(len(ss) - 2) + "s"
-                header, data = struct.unpack(cmd, ss)
+            else: # if receive DATA, put into buffer
+                cmd = "!H32s" + str(len(ss) - 34) + "s"
+                header_sq, chsm, data = struct.unpack(cmd, ss)
                 #print("Got header is %d" % header)
 
-                if header < self.recvnum:
-                    ack = struct.pack("!H", header)
-                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                # if checksum is wrong, drop the packet, resend
+                databody = str(header_sq).encode() + data
+                recv_chsm = self.getchecksum(databody).encode()
+                if recv_chsm == chsm:
+
+                    if header_sq < self.recvnum:
+                        ack = struct.pack("!H", header_sq)
+                        self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                    else:
+                        self.buffer.update({header_sq: data})
+
+                        ack = struct.pack("!H", header_sq)
+                        self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                        #print("--Sent ACK:", header)
+
                 else:
-                    self.buffer.update({header: data})
+                    print("ERROR checksum, dropped the packet..")
+                    print("##:", header_sq)
 
-                    ack = struct.pack("!H", header)
-                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
-                    #print("--Sent ACK:", header)
+                    continue    # ignore this packet
 
-
-    def retransmission(self,ss):
-
+    def retransmission(self, ss: struct) -> None:
         # resend ss after exceeding time
         # self.socket.sendto(ss, (self.dst_ip, self.dst_port))
         # deparse the ss to get the header
-        cmd = "!H" + str(len(ss)-2) + "s"
-        header, dt = struct.unpack(cmd, ss)
-        print(header,self.ack)
+        cmd = "!H32s" + str(len(ss)-34) + "s"
+        header, _, dt = struct.unpack(cmd, ss)
+
         if header not in self.ack:
             self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-            # t1 = self.TIMER_THREAD.get(header)
-            # #print("T1: ", t1)
-            # t1.cancel()
-            # self.TIMER_THREAD.pop(header)
-            print("!!Resend!!:", header,"; ",dt)
+
+            #print("!!Resend!!:", header,"; ",dt)
             # recreate a Timer for this send
             t2 = Timer(0.25, self.retransmission, (ss,))  # self.seqnum,
             self.TIMER_THREAD.update({header: t2})
             t2.start()
+
         else:
             self.TIMER_THREAD.pop(header)
 
@@ -93,10 +100,14 @@ class Streamer:
                 raw_data = raw_data[1470:]
                 self.seqnum += 1
 
-                ss = struct.pack("!H1470s", self.seqnum, packet_data_bytes)
+                # warp header+data, combine seqNum & checksum
+                databody = str(self.seqnum).encode() + raw_data
+                chks = self.getchecksum(databody).encode()
+                print("CHECKSUM LEN: ", len(chks))
+                ss = struct.pack("!H32s1470s", self.seqnum, chks, packet_data_bytes)
 
                 self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                t = Timer(0.5, self.retransmission, (ss,))
+                t = Timer(0.25, self.retransmission, (ss,))
                 self.TIMER_THREAD.update({self.seqnum: t})
                 t.start()
 
@@ -105,16 +116,17 @@ class Streamer:
                 if len(raw_data) != 0:
                     self.seqnum += 1
 
-                    cmd = "!H" + str(len(raw_data)) + "s"
-                    ss = struct.pack(cmd, self.seqnum, raw_data) #???? seqnum
+                    cmd = "!H32s" + str(len(raw_data)) + "s"
+                    databody = str(self.seqnum).encode() + raw_data
+                    chks = self.getchecksum(databody).encode()
+                    ss = struct.pack(cmd, self.seqnum, chks, raw_data)
 
                     self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-                    t = Timer(0.5, self.retransmission, (ss,)) #self.seqnum,
+                    t = Timer(0.25, self.retransmission, (ss,))
                     self.TIMER_THREAD.update({self.seqnum: t})
                     t.start()
 
                 break
-
 
     def recv(self) -> bytes:
         """Blocks (waits) if no data is ready to be read from the connection."""
@@ -140,6 +152,18 @@ class Streamer:
 
         return rs.encode()
 
+    def getchecksum(self, databody) -> bytes:
+        # create a new one if not exist; else update the previous one
+        # if seq not in self.MD5.keys():
+        #     md5 = hashlib.md5()
+        # else:
+        #     md5 = self.MD5.get(seq)
+        md5 = hashlib.md5()
+        md5.update(databody)
+        chks = md5.hexdigest()
+        #self.MD5.update({seq:chks})
+        return chks
+
     def close(self) -> None:
         """Cleans up. It should block (wait) until the Streamer is done with all
            the necessary ACKs and retransmissions"""
@@ -147,3 +171,5 @@ class Streamer:
 
         # self.pool.shutdown()
         pass
+
+
