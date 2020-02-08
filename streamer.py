@@ -27,6 +27,8 @@ class Streamer:
         self.executor.submit(self.listener)
         self.TIMER_THREAD = {}
         self.MD5 = {}
+        self.fin = 0 # initialize the fin signal
+        self.finACK = 0 # initialize the ACK of fin
 
         print("Initial finished.")
 
@@ -34,11 +36,13 @@ class Streamer:
         while True:
 
             ss, addr = self.socket.recvfrom()
-            if len(ss) <= 2:# if receive ACK, STOP corresponding TIMER
+            if len(ss) <= 2: # if receive ACK, STOP corresponding TIMER
 
                 cmd = "!H"
                 this_ack, = struct.unpack(cmd, ss)
                 self.ack.append(this_ack)
+                if this_ack == 0:
+                    self.finACK = 1
 
                 #print("==I got ACK: ==", this_ack)
 
@@ -51,15 +55,19 @@ class Streamer:
                 databody = str(header_sq).encode() + data
                 recv_chsm = self.getchecksum(databody).encode()
                 if recv_chsm == chsm:
-
+                    # if get FIN, send finACK where ack=0
+                    if data.decode() == '\r\n':
+                        self.fin = 1
+                        self.socket.sendto(0, (self.dst_ip, self.dst_port))
+                        continue
                     if header_sq < self.recvnum:
                         ack = struct.pack("!H", header_sq)
-                        self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                        # self.socket.sendto(ack, (self.dst_ip, self.dst_port))
                     else:
                         self.buffer.update({header_sq: data})
-
                         ack = struct.pack("!H", header_sq)
-                        self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+
+                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
                         #print("--Sent ACK:", header)
 
                 else:
@@ -168,8 +176,15 @@ class Streamer:
         """Cleans up. It should block (wait) until the Streamer is done with all
            the necessary ACKs and retransmissions"""
         # your code goes here, especially after you add ACKs and retransmissions.
-
-        # self.pool.shutdown()
-        pass
-
-
+        # wait for buffer clearance
+        while True:
+            if len(self.TIMER_THREAD.keys()) == 0:
+                # send FIN
+                self.send(str("\r\n").encode())
+                # wait for finACK
+                if self.finACK == 1 and self.fin == 1:
+                    self.executor.shutdown()
+                else: continue
+                break
+            else:
+                print("CAN'T CLOSE, BECAUSE: ", self.TIMER_THREAD.keys())
