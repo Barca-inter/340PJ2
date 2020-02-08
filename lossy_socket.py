@@ -103,7 +103,7 @@ class LossyUDP(socket):
                     stats.bytes_recv += len(data)
             except InterruptedError:
                 # note that on Python >= 3.5, this exception will not happen:
-                # https://www.python.org/dev/peps/pep-0475/
+                # https://www.python.org/dev/peps/pep-0475/become_reliable_after
                 continue
             except timeout:
                 continue

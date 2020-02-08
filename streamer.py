@@ -42,7 +42,6 @@ class Streamer:
                 print(self.flag)
                 continue
             if len(ss) <= 2:  # if receive ACK, STOP corresponding TIMER
-
                 cmd = "!H"
                 this_ack, = struct.unpack(cmd, ss)
                 self.ack.append(this_ack)
