@@ -44,27 +44,27 @@ class Streamer:
                 break
             if len(ss) <= 34:  # if receive ACK, STOP corresponding TIMER
                 cmd = "!H32s"
+                # print("收到ss:",ss)
                 this_ack, ackchsm = struct.unpack(cmd, ss)
-                print(type(this_ack))
-
-                rcv_csm = self.getchecksum(this_ack.encode())
-
-
-                print("receive ack_checksum:  " , rcv_csm)
-
+                # print("收到this_ack:",this_ack)
+                rcv_csm = self.getchecksum(str(this_ack).encode()).encode()
+                # print("计算rcv_csm:",rcv_csm)
+                # print("收到ackhsm：",ackchsm)
                 if rcv_csm == ackchsm:
+                    # print("收到ACK chsm: == ")
                     self.ack.append(this_ack)
                     # print("ack:", self.ack)
                     if this_ack == 0:
                         self.finACK = 1
-
-                # print("==I got ACK: ==", this_ack)
+                else:
+                    continue
+                    # print("不等rec:",rcv_csm," & ",ackchsm)
 
             else:  # if receive DATA, put into buffer
                 cmd = "!H32s" + str(len(ss) - 34) + "s"
                 header_sq, chsm, data = struct.unpack(cmd, ss)
-                print("receive data header",header_sq)
-                print("receive data :",data)
+                # print("receive data header",header_sq)
+                # print("receive data :",data)
                 # print("Got header is %d" % header)
 
                 # if checksum is wrong, drop the packet, resend
@@ -72,27 +72,28 @@ class Streamer:
                 recv_chsm = self.getchecksum(databody).encode()
                 # print("databody",databody)
                 # print("chsm:",chsm)
-                print("recv_chsm",recv_chsm)
+                # print("recv_chsm",recv_chsm)
 
                 if recv_chsm != chsm:
-                    print("recv_chsm != chsm")
+                    # print("recv_chsm != chsm")
                     continue
                 if recv_chsm == chsm:
-                    print("recv_chsm == chsm")
+                    # print("recv_chsm == chsm")
                     if header_sq < self.recvnum:
-                        print("header<recvnum, recvnum is ", self.recvnum)
+                        # print("header<recvnum, recvnum is ", self.recvnum)
                         ack = struct.pack("!H32s", header_sq, self.getchecksum(str(header_sq).encode()).encode()) #--ack = struct.pack("!H", header_sq)
-
+                        # print("多余ack",header_sq)
                         # self.socket.sendto(ack, (self.dst_ip, self.dst_port))
                     else:
 
                         self.buffer.update({header_sq: data})
-                        print("buffer.update::::", self.buffer)
+                        # print("buffer.update::::", self.buffer)
                         # print("buffer update header:",header_sq)
                         ack = struct.pack("!H32s", header_sq, self.getchecksum(str(header_sq).encode()).encode()) #ack = struct.pack("!H", header_sq)
-                        print("buffer:",self.buffer)
-                    # print("send ack", ack)
+                        # print("buffer:",self.buffer)
+                    # print("发送ack", header_sq)
                     self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+
                     # print("--Sent ACK:", header_sq)
 
                 else:
@@ -110,18 +111,24 @@ class Streamer:
         header, _, dt = struct.unpack(cmd, ss)
 
         if header not in self.ack:
+            # print("重发", header)
             self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-            t2 = Timer(0.5, self.retransmission, (ss,))  # self.seqnum,
-            if dt != str("\r\n").encode():
-                self.TIMER_THREAD.update({header: t2})
-            t2.start()
-
+            time.sleep(0.5)
+            self.retransmission(ss)
+            # t2 = Timer(0.5, self.retransmission, (ss,))  # self.seqnum,
+            # if dt != str("\r\n").encode():
+            #     self.TIMER_THREAD.update({header: t2})
+            # t2.start()
         else:
-            if dt == str("\r\n").encode():
-                if self.finACK != 1:
-                    Timer(1, self.retransmission, (ss,)).start()
-            if dt != str("\r\n").encode():
-                self.TIMER_THREAD.pop(header)
+            self.ack.remove(header)
+            # print("丢：",header)
+            # if dt == str("\r\n").encode():
+            #     if self.finACK != 1:
+            #         time.sleep(1)
+            #         self.retransmission(ss)
+            # else:
+
+            self.TIMER_THREAD.pop(header)
 
     def send(self, data_bytes: bytes) -> None:
         """Note that data_bytes can be larger than one packet."""
@@ -178,7 +185,7 @@ class Streamer:
                 continue
 
             m = max(self.buffer.keys())
-            for i in range(self.recvnum, self.recvnum + 20):
+            for i in range(self.recvnum, m+1):
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
                     self.recvnum += 1
@@ -197,16 +204,16 @@ class Streamer:
         # self.MD5.update({seq:chks})
         return chks
 
-    def SecondClose(self):
-        if self.finACK != 1 or self.fin != 1:
-            self.sendFin()
-
-    def sendFin(self):
-        while True:
-            if len(self.TIMER_THREAD.keys()) == 0:
-                self.ack.append(self.seqnum + 1)
-                self.send(str("\r\n").encode())
-                break
+    # def SecondClose(self):
+    #     if self.finACK != 1 or self.fin != 1:
+    #         self.sendFin()
+    #
+    # def sendFin(self):
+    #     while True:
+    #         if len(self.TIMER_THREAD.keys()) == 0:
+    #             self.ack.append(self.seqnum + 1)
+    #             self.send(str("\r\n").encode())
+    #             break
 
     def close(self) -> None:
         """Cleans up. It should block (wait) until the Streamer is done with all
@@ -216,6 +223,6 @@ class Streamer:
                 time.sleep(5)
                 if len(self.buffer) == 0:
                     self.socket.stoprecv()
-                    self.flag = 1
+                    self.flag = 0
                     break
 
