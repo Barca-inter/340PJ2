@@ -38,23 +38,30 @@ class Streamer:
         self.executor.submit(self.nagle)
 
     def nagle(self) -> None:
+        # print("a")
         while self.nagleEnd == 0:
+            # print("b")
             temp = self.data
-            time.sleep(1)
+            # print("self.data",self.data)
+            time.sleep(0.25)
             if temp == self.data and temp != b'':
                 self.nagleEnd = 1
                 self.send(temp)
+                # print("c")
                 break
 
     def listener(self) -> None:
         # print(self.flag)
         while self.flag == 1:
-
+            # print("a")
             ss, addr = self.socket.recvfrom()
+            # print("b")
             if addr == ("", 0):
                 # print(self.flag)
+                # print("c")
                 break
             if len(ss) <= 34:  # if receive ACK, STOP corresponding TIMER
+                # print("e")
                 cmd = "!H32s"
                 # print("收到ss:",ss)
                 this_ack, ackchsm = struct.unpack(cmd, ss)
@@ -68,11 +75,13 @@ class Streamer:
                     # print("ack:", self.ack)
                     if this_ack == 0:
                         self.finACK = 1
+                    # print("f")
                 else:
                     continue
                     # print("不等rec:",rcv_csm," & ",ackchsm)
 
             else:  # if receive DATA, put into buffer
+                # print("g")
                 cmd = "!H32s" + str(len(ss) - 34) + "s"
                 header_sq, chsm, data = struct.unpack(cmd, ss)
                 # print("receive data header",header_sq)
@@ -90,6 +99,7 @@ class Streamer:
                     # print("recv_chsm != chsm")
                     continue
                 if recv_chsm == chsm:
+                    # print("h")
                     # print("recv_chsm == chsm")
                     if header_sq < self.recvnum:
                         # print("header<recvnum, recvnum is ", self.recvnum)
@@ -105,7 +115,7 @@ class Streamer:
                         # print("buffer:",self.buffer)
                     # print("发送ack", header_sq)
                     self.socket.sendto(ack, (self.dst_ip, self.dst_port))
-
+                    # print("i")
                     # print("--Sent ACK:", header_sq)
 
                 else:
@@ -155,7 +165,7 @@ class Streamer:
             self.data = raw_data
         # if self.data == b'':
         #     self.data = raw_data
-        print("all data:", self.data)
+        # print("all data:", self.data)
 
         while True:
 
@@ -201,16 +211,16 @@ class Streamer:
                     time.sleep(0.1)
                     # raw_data = b''
             if len(raw_data) > 1438 and self.data == b'':
-                print("111")
+                # print("111")
                 self.data = raw_data
                 continue
             self.data = raw_data
             raw_data = b''
-            print("remain",self.data)
+            # print("remain",self.data)
             if self.nagleEnd == 1:
                 self.data = b''
             if len(self.data) == 0:
-                print("send end")
+                # print("send end")
                 break
 
 
@@ -258,11 +268,12 @@ class Streamer:
         """Cleans up. It should block (wait) until the Streamer is done with all
            the necessary ACKs and retransmissions"""
         while True:
-            print("self.buffer",self.buffer)
+            # print("self.buffer",self.buffer)
             if len(self.buffer) == 0:
                 time.sleep(5)
-                print("self.buffer", self.buffer)
+                # print("self.buffer", self.buffer)
                 if len(self.buffer) == 0:
                     self.socket.stoprecv()
                     self.flag = 0
+                    self.nagleEnd = 1
                     break

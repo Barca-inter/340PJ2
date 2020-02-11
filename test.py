@@ -4,7 +4,7 @@ import lossy_socket
 
 
 
-NUMS = 1000
+NUMS = 10000
 
 
 
