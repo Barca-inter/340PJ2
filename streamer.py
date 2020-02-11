@@ -33,15 +33,6 @@ class Streamer:
         self.retranHeader = {}
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.executor.submit(self.listener)
-        # self.executor.submit(self.secondFin)
-
-        # print("Initial finished.")
-
-    # def secondFin(self) -> None:
-    #     while True:
-    #         if self.secfin == 1:
-    #             break
-    #     self.SecondClose()
 
     def listener(self) -> None:
         # print(self.flag)
@@ -51,14 +42,16 @@ class Streamer:
             if addr == ("", 0):
                 # print(self.flag)
                 break
-            if len(ss) <= 2:  # if receive ACK, STOP corresponding TIMER
-                cmd = "!H"
-                this_ack, = struct.unpack(cmd, ss)
+            if len(ss) <= 34:  # if receive ACK, STOP corresponding TIMER
+                cmd = "!H32s"
+                this_ack, ackchsm = struct.unpack(cmd, ss)
                 # print("receive ack: %d " % this_ack)
-                self.ack.append(this_ack)
-                # print("ack:", self.ack)
-                if this_ack == 0:
-                    self.finACK = 1
+                rcv_csm = self.getchecksum(this_ack.encode())
+                if ackchsm == rcv_csm:
+                    self.ack.append(this_ack)
+                    # print("ack:", self.ack)
+                    if this_ack == 0:
+                        self.finACK = 1
 
                 # print("==I got ACK: ==", this_ack)
 
@@ -78,35 +71,22 @@ class Streamer:
                 if recv_chsm != chsm:
                     continue
                 if recv_chsm == chsm:
-                    # print("check correct")
-                    # if get FIN, send finACK where ack=0
-                    # if data.decode() == '\r\n':
-                    #     self.fin = 1
-                    #     # print("233")
-                    #     finACK = struct.pack("!H", 0)
-                    #     self.socket.sendto(finACK, (self.dst_ip, self.dst_port))
-                    #     self.secfin = 1
-                    #     # print("666")
-                    #     # self.SecondClose()
-                    #     # Timer(0.25, self.SecondClose)
-                    #     continue
                     if header_sq < self.recvnum:
                         # print("header<recvnum, recvnum is ", self.recvnum)
-                        ack = struct.pack("!H", header_sq)
 
-                        # self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                        ack = struct.pack("!H32s", header_sq, self.getchecksum(str(header_sq).encode()))
+
+                        self.socket.sendto(ack, (self.dst_ip, self.dst_port))
                     else:
                         self.buffer.update({header_sq: data})
                         # print("buffer update header:",header_sq)
-                        ack = struct.pack("!H", header_sq)
+                        ack = struct.pack("!H32s", header_sq, self.getchecksum(str(header_sq).encode()))
                         # print("buffer:",self.buffer)
                     # print("send ack", ack)
-                    self.socket.sendto(ack, (self.dst_ip, self.dst_port))
+                        self.socket.sendto(ack, (self.dst_ip, self.dst_port))
                     # print("--Sent ACK:", header_sq)
 
                 else:
-                    # print("ERROR checksum, dropped the packet..")
-                    # print("##:", header_sq)
 
                     continue  # ignore this packet
 
@@ -117,22 +97,9 @@ class Streamer:
         time.sleep(0.25)
         cmd = "!H32s" + str(len(ss) - 34) + "s"
         header, _, dt = struct.unpack(cmd, ss)
-        # if self.finACK == 1 and dt == str("\r\n").encode():
-        #     return None
-        # elif header in self.ack and dt == str("\r\n").encode() and self.finACK != 1:
-        #     Timer(0.5, self.retransmission, (ss,)).start()
-        # print(header)
-        # print("selfack:",self.ack)
         if header not in self.ack:
             self.socket.sendto(ss, (self.dst_ip, self.dst_port))
-            # print("self.ack:",self.ack)
-            # print("resend header:", header)
-            # self.retranHeader[header] +=1
-            # if self.retranHeader[header] ==10:
-                # return None
-            # print("!!Resend!!:", header,"; ",dt)
-            # recreate a Timer for this send
-            # time.sleep(1)
+            # time.sleep(0.25)
             # self.retransmission(ss)
             t2 = Timer(0.25, self.retransmission, (ss,))  # self.seqnum,
             if dt != str("\r\n").encode():
@@ -204,23 +171,11 @@ class Streamer:
             # if len(self.buffer) >= 30:
             m = max(self.buffer.keys())
             for i in range(self.recvnum, self.recvnum + 20):
-                    # print("recv()",self.recvnum,", ",self.buffer.keys())
+                # print("recv()",self.recvnum,", ",self.buffer.keys())
                 if self.recvnum in self.buffer.keys():
                     rs = rs + self.buffer.pop(self.recvnum).decode()
                     # print("Rs+=pop: ", rs, " recv#: ", self.recvnum)
                     self.recvnum += 1
-                    # print("recvnum:",self.recvnum)
-            # else:
-            #     temp = len(self.buffer)
-            #     time.sleep(0.2)
-            #     if len(self.buffer)==temp:
-            #         m = max(self.buffer.keys())
-            #         for i in range(self.recvnum, self.recvnum + 5):
-            #             # print("recv()",self.recvnum,", ",self.buffer.keys())
-            #             if self.recvnum in self.buffer.keys():
-            #                 rs = rs + self.buffer.pop(self.recvnum).decode()
-            #                 # print("Rs+=pop: ", rs, " recv#: ", self.recvnum)
-            #                 self.recvnum += 1
             if rs == '':
                 continue
 
@@ -229,15 +184,9 @@ class Streamer:
         return rs.encode()
 
     def getchecksum(self, databody) -> bytes:
-        # create a new one if not exist; else update the previous one
-        # if seq not in self.MD5.keys():
-        #     md5 = hashlib.md5()
-        # else:
-        #     md5 = self.MD5.get(seq)
         md5 = hashlib.md5()
         md5.update(databody)
         chks = md5.hexdigest()
-        # self.MD5.update({seq:chks})
         return chks
 
     def SecondClose(self):
@@ -261,25 +210,3 @@ class Streamer:
                     self.socket.stoprecv()
                     self.flag = 1
                     break
-        # your code goes here, especially after you add ACKs and retransmissions.
-        # wait for buffer clearance
-        ##Timer(1, self.sendFin).start()
-        ##while True:
-
-            # if len(self.TIMER_THREAD.keys()) == 0:
-            # print("thread = 0")
-            # print("self.fin = %d" % self.fin)
-            # print("self.finACK = %d" % self.finACK)
-            # send FIN
-
-            # wait for finACK
-            ##if self.finACK == 1 and self.fin == 1:
-                ##Timer(1, self.socket.stoprecv).start()
-                # self.socket.stoprecv()
-                ##self.flag = 0
-                # self.executor.shutdown()
-                ##break
-            # else:
-
-        # else:
-        # print("CAN'T CLOSE, BECAUSE: ", self.TIMER_THREAD.keys())
